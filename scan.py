@@ -62,6 +62,7 @@ def scan_directory(source_dir: str, tmdb_bearer_token: str):
         console.print(f"[yellow]Scanning directory: {root} with {len(files)} files...[/yellow]")
         for file in files:
             abs_path = os.path.abspath(os.path.join(root, file))
+            rel_path = os.path.relpath(abs_path, source_dir)
             if abs_path in recorded_files:
                 console.print(f"[green]Skipping already recorded:[/green] {abs_path}")
                 continue
@@ -129,7 +130,7 @@ def scan_directory(source_dir: str, tmdb_bearer_token: str):
                                         continue
                                     genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
                                     metadata = json.dumps(movie, default=str)
-                                    add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                                    add_movie(abs_path, rel_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
                                     console.print("[green]Added to database.[/green]")
                                     break
                                 else:
@@ -148,7 +149,7 @@ def scan_directory(source_dir: str, tmdb_bearer_token: str):
                                 continue
                             genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
                             metadata = json.dumps(movie, default=str)
-                            add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                            add_movie(abs_path, rel_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
                             console.print("[green]Added to database.[/green]")
                             break
                         else:
@@ -177,7 +178,7 @@ def scan_directory(source_dir: str, tmdb_bearer_token: str):
                                     continue
                                 genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
                                 metadata = json.dumps(movie, default=str)
-                                add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                                add_movie(abs_path, rel_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
                                 console.print("[green]Added to database.[/green]")
                                 break
                             else:
