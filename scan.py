@@ -72,7 +72,33 @@ def scan_directory(source_dir: str, tmdb_bearer_token: str):
                     if results:
                         # Show top 3 results + option 0 for manual
                         for idx, m in enumerate(results[:3], start=1):
-                            console.print(f"{idx}. {m['title']} ({m.get('release_date', '')[:4]}) [ID: {m['id']}]")
+                            # Fetch extra details for each result (director, production)
+                            details = tmdb_v4_search_by_id(m['id'], tmdb_bearer_token)
+                            # Get production companies (first one or all)
+                            prod = ''
+                            if details and 'production_companies' in details and details['production_companies']:
+                                prod = details['production_companies'][0]['name']
+                            # Get director from credits if available
+                            director = ''
+                            if details and 'credits' in details and 'crew' in details['credits']:
+                                for crew in details['credits']['crew']:
+                                    if crew.get('job') == 'Director':
+                                        director = crew.get('name')
+                                        break
+                            # Fallback: try to fetch credits if not present
+                            if not director:
+                                # Try to fetch credits endpoint
+                                credits_url = f"https://api.themoviedb.org/3/movie/{m['id']}/credits"
+                                headers = {"Authorization": f"Bearer {tmdb_bearer_token}", "accept": "application/json"}
+                                credits_resp = requests.get(credits_url, headers=headers)
+                                if credits_resp.status_code == 200:
+                                    credits = credits_resp.json()
+                                    for crew in credits.get('crew', []):
+                                        if crew.get('job') == 'Director':
+                                            director = crew.get('name')
+                                            break
+                            extra = f" | [magenta]{prod}[/magenta] | [green]{director}[/green]" if prod or director else ''
+                            console.print(f"{idx}. {m['title']} ({m.get('release_date', '')[:4]}) [ID: {m['id']}] {extra}")
                         console.print("0. [Manual search or TMDb ID / Skip]")
                         choice = Prompt.ask("Select match (1-3), 0 for manual", default="1")
                         if choice == "0":
