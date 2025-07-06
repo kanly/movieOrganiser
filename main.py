@@ -1,0 +1,33 @@
+import typer
+from db import init_db, reset_db
+from scan import scan_directory
+from build import build_structure
+
+app = typer.Typer(help="Movie Organiser CLI")
+
+@app.command()
+def scan(
+    source_dir: str = typer.Argument(..., help="Directory to scan for movie files"),
+    tmdb_api_key: str = typer.Option(..., prompt=True, hide_input=True, help="TMDb API Key")
+):
+    """Scan directory and build movie database."""
+    init_db()
+    scan_directory(source_dir, tmdb_api_key)
+
+@app.command()
+def build(
+    target_dir: str = typer.Argument(..., help="Directory to create symlinked structure"),
+    mode: str = typer.Option("title", help="Folder structure: 'title' or 'year'"),
+    dry_run: bool = typer.Option(False, help="Preview changes without making them")
+):
+    """Build symlinked movie structure from database."""
+    build_structure(target_dir, mode=mode, dry_run=dry_run)
+
+@app.command()
+def reset():
+    """Reset the movie database."""
+    reset_db()
+    typer.echo("Database reset.")
+
+if __name__ == "__main__":
+    app()
