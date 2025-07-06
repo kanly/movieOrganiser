@@ -2,7 +2,7 @@ import os
 import re
 from typing import List, Tuple, Optional
 import requests
-from db import add_movie
+from db import add_movie, get_all_movies
 from rich.prompt import Prompt, Confirm
 from rich.console import Console
 import json
@@ -56,11 +56,16 @@ def guess_title_year(filename: str) -> Tuple[str, Optional[int]]:
     return name, year
 
 def scan_directory(source_dir: str, tmdb_bearer_token: str):
+    # Get already recorded files from the database
+    recorded_files = {movie['absolute_path'] for movie in get_all_movies()}
     for root, _, files in os.walk(source_dir):
         console.print(f"[yellow]Scanning directory: {root} with {len(files)} files...[/yellow]")
         for file in files:
+            abs_path = os.path.abspath(os.path.join(root, file))
+            if abs_path in recorded_files:
+                console.print(f"[green]Skipping already recorded:[/green] {abs_path}")
+                continue
             if file.lower().endswith(VIDEO_EXTENSIONS):
-                abs_path = os.path.abspath(os.path.join(root, file))
                 console.print(f"[blue]Found video file:[/blue] {abs_path}")
                 title_guess, year_guess = guess_title_year(file)
                 console.print(f"\n[bold]File:[/bold] {abs_path}")
