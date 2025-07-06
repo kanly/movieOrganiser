@@ -1,7 +1,7 @@
 import os
 import re
 from typing import List, Tuple, Optional
-from tmdbv3api import TMDb, Movie
+import requests
 from db import add_movie
 from rich.prompt import Prompt, Confirm
 from rich.console import Console
@@ -10,61 +10,150 @@ import json
 VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi")
 console = Console()
 
+# --- V4 TMDb Search ---
+def tmdb_v4_search(query: str, bearer_token: str, language: str = "en-US", include_adult: bool = False, page: int = 1):
+    url = "https://api.themoviedb.org/3/search/movie"
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "accept": "application/json"
+    }
+    params = {
+        "query": query,
+        "include_adult": str(include_adult).lower(),
+        "language": language,
+        "page": page
+    }
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json().get("results", [])
+    else:
+        console.print(f"[red]TMDb API error: {response.status_code} {response.text}[/red]")
+        return []
+
+def tmdb_v4_search_by_id(tmdb_id: str, bearer_token: str):
+    url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "accept": "application/json"
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        console.print(f"[red]TMDb API error: {response.status_code} {response.text}[/red]")
+        return None
+
 def guess_title_year(filename: str) -> Tuple[str, Optional[int]]:
-    # Simple regex: "Title (Year)" or "Title.Year"
-    match = re.match(r"(.+?)[\.\s\(\[](d{4})[\)\]\.\s]", filename)
-    if match:
-        title = match.group(1).replace('.', ' ').replace('_', ' ').strip()
-        year = int(match.group(2))
-        return title, year
-    # Fallback: remove extension, no year
-    title = os.path.splitext(filename)[0].replace('.', ' ').replace('_', ' ').strip()
-    return title, None
+    # Remove bracketed/parenthetical info and common tags
+    name = os.path.splitext(filename)[0]
+    name = re.sub(r"[\[\(].*?[\]\)]", "", name)  # Remove [brackets] and (parentheses)
+    name = re.sub(r"[._-]", " ", name)  # Replace separators with space
+    name = re.sub(r"\b(720p|1080p|2160p|x264|x265|h264|h265|bluray|bdrip|webrip|dvdrip|hdrip|subs?|ac3|dts|aac|ita|eng|spa|trilogia|fanart|poster|thumb)\b", "", name, flags=re.I)
+    name = re.sub(r"\s+", " ", name).strip()
+    # Try to extract year
+    match = re.search(r"(19|20)\d{2}", filename)
+    year = int(match.group(0)) if match else None
+    return name, year
 
-def scan_directory(source_dir: str, tmdb_api_key: str):
-    tmdb = TMDb()
-    tmdb.api_key = tmdb_api_key
-    movie_api = Movie()
-
+def scan_directory(source_dir: str, tmdb_bearer_token: str):
     for root, _, files in os.walk(source_dir):
+        console.print(f"[yellow]Scanning directory: {root} with {len(files)} files...[/yellow]")
         for file in files:
             if file.lower().endswith(VIDEO_EXTENSIONS):
                 abs_path = os.path.abspath(os.path.join(root, file))
+                console.print(f"[blue]Found video file:[/blue] {abs_path}")
                 title_guess, year_guess = guess_title_year(file)
                 console.print(f"\n[bold]File:[/bold] {abs_path}")
                 console.print(f"Guessed: [cyan]{title_guess}[/cyan] ({year_guess or 'unknown year'})")
 
-                # Search TMDb
-                results = movie_api.search(title_guess)
-                # Fix: Ensure results is a list
-                if not isinstance(results, list) or not results:
-                    console.print("[red]No TMDb results found.[/red]")
-                    tmdb_id = Prompt.ask("Enter TMDb movie ID manually", default="")
-                    if tmdb_id.isdigit():
-                        movie = movie_api.details(int(tmdb_id))
+                # V4 Search
+                while True:
+                    results = tmdb_v4_search(title_guess, tmdb_bearer_token)
+                    if results:
+                        # Show top 3 results + option 0 for manual
+                        for idx, m in enumerate(results[:3], start=1):
+                            console.print(f"{idx}. {m['title']} ({m.get('release_date', '')[:4]}) [ID: {m['id']}]")
+                        console.print("0. [Manual search or TMDb ID / Skip]")
+                        choice = Prompt.ask("Select match (1-3), 0 for manual", default="1")
+                        if choice == "0":
+                            # Enter manual mode
+                            console.print("[yellow]Manual mode:[/yellow]")
+                            console.print("1. Propose a new search term")
+                            console.print("2. Enter TMDb movie ID manually")
+                            console.print("0. Skip this file")
+                            manual_choice = Prompt.ask("Select option", default="1")
+                            if manual_choice == "1":
+                                title_guess = Prompt.ask("Enter new search term", default=title_guess)
+                                continue  # Retry search with new term
+                            elif manual_choice == "2":
+                                tmdb_id = Prompt.ask("Enter TMDb movie ID", default="")
+                                if tmdb_id.isdigit():
+                                    movie = tmdb_v4_search_by_id(tmdb_id, tmdb_bearer_token)
+                                    if not movie:
+                                        console.print("[yellow]Invalid TMDb ID. Try again.")
+                                        continue
+                                    # Confirm
+                                    confirm = Confirm.ask(f"Use: {movie['title']} ({movie.get('release_date', '')[:4]}) [ID: {movie['id']}]?", default=True)
+                                    if not confirm:
+                                        continue
+                                    genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
+                                    metadata = json.dumps(movie, default=str)
+                                    add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                                    console.print("[green]Added to database.[/green]")
+                                    break
+                                else:
+                                    console.print("[yellow]Invalid TMDb ID. Try again.")
+                                    continue
+                            elif manual_choice == "0":
+                                console.print("[yellow]Skipping file.[/yellow]")
+                                break
+                            else:
+                                continue
+                        elif choice.isdigit() and 1 <= int(choice) <= len(results[:3]):
+                            movie = results[int(choice)-1]
+                            # Confirm
+                            confirm = Confirm.ask(f"Use: {movie['title']} ({movie.get('release_date', '')[:4]}) [ID: {movie['id']}]?", default=True)
+                            if not confirm:
+                                continue
+                            genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
+                            metadata = json.dumps(movie, default=str)
+                            add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                            console.print("[green]Added to database.[/green]")
+                            break
+                        else:
+                            continue
                     else:
-                        console.print("[yellow]Skipping file.[/yellow]")
-                        continue
-                else:
-                    # Show top 3 results
-                    for idx, m in enumerate(results[:3]):
-                        console.print(f"{idx+1}. {m.title} ({getattr(m, 'release_date', '')[:4]}) [ID: {m.id}]")
-                    choice = Prompt.ask("Select match (1-3), [s]kip, or enter TMDb ID", default="1")
-                    if choice.isdigit() and 1 <= int(choice) <= len(results[:3]):
-                        movie = results[int(choice)-1]
-                    elif choice.isdigit():
-                        movie = movie_api.details(int(choice))
-                    else:
-                        console.print("[yellow]Skipping file.[/yellow]")
-                        continue
-
-                # Confirm
-                confirm = Confirm.ask(f"Use: {movie.title} ({getattr(movie, 'release_date', '')[:4]}) [ID: {movie.id}]?", default=True)
-                if not confirm:
-                    console.print("[yellow]Skipping file.[/yellow]")
-                    continue
-
-                genres = ", ".join([g['name'] for g in getattr(movie, 'genres', [])])
-                metadata = json.dumps(movie.__dict__, default=str)
-                add_movie(abs_path, movie.id, movie.title, int(getattr(movie, 'release_date', '0')[:4] or 0), genres, metadata)
-                console.print("[green]Added to database.[/green]")
+                        # No results found, go to manual mode
+                        console.print("[red]No TMDb results found.[/red]")
+                        console.print("[yellow]Manual mode:[/yellow]")
+                        console.print("1. Propose a new search term")
+                        console.print("2. Enter TMDb movie ID manually")
+                        console.print("0. Skip this file")
+                        manual_choice = Prompt.ask("Select option", default="1")
+                        if manual_choice == "1":
+                            title_guess = Prompt.ask("Enter new search term", default=title_guess)
+                            continue  # Retry search with new term
+                        elif manual_choice == "2":
+                            tmdb_id = Prompt.ask("Enter TMDb movie ID", default="")
+                            if tmdb_id.isdigit():
+                                movie = tmdb_v4_search_by_id(tmdb_id, tmdb_bearer_token)
+                                if not movie:
+                                    console.print("[yellow]Invalid TMDb ID. Try again.")
+                                    continue
+                                # Confirm
+                                confirm = Confirm.ask(f"Use: {movie['title']} ({movie.get('release_date', '')[:4]}) [ID: {movie['id']}]?", default=True)
+                                if not confirm:
+                                    continue
+                                genres = ", ".join([g['name'] for g in movie.get('genres', [])]) if 'genres' in movie else ''
+                                metadata = json.dumps(movie, default=str)
+                                add_movie(abs_path, movie['id'], movie['title'], int(movie.get('release_date', '0')[:4] or 0), genres, metadata)
+                                console.print("[green]Added to database.[/green]")
+                                break
+                            else:
+                                console.print("[yellow]Invalid TMDb ID. Try again.")
+                                continue
+                        elif manual_choice == "0":
+                            console.print("[yellow]Skipping file.[/yellow]")
+                            break
+                        else:
+                            continue

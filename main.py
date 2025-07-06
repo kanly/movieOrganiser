@@ -8,11 +8,11 @@ app = typer.Typer(help="Movie Organiser CLI")
 @app.command()
 def scan(
     source_dir: str = typer.Argument(..., help="Directory to scan for movie files"),
-    tmdb_api_key: str = typer.Option(..., prompt=True, hide_input=True, help="TMDb API Key")
+    tmdb_bearer_token: str = typer.Option(..., prompt=True, hide_input=True, help="TMDb V4 Bearer Token")
 ):
-    """Scan directory and build movie database."""
+    """Scan directory and build movie database using TMDb v4 API (Bearer token)."""
     init_db()
-    scan_directory(source_dir, tmdb_api_key)
+    scan_directory(source_dir, tmdb_bearer_token)
 
 @app.command()
 def build(
