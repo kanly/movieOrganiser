@@ -24,6 +24,8 @@ def build_structure(target_dir: str, mode: Literal["title", "year"] = "title", d
     ln_commands = []
     mkdirs = set()
     for movie in movies:
+        if movie.get("skip", False):
+            continue
         # Use relative path if script_path is set and source_root is provided
         if script_path and source_root:
             src = os.path.join(source_root, movie["relative_path"])
