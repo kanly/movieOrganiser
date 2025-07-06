@@ -18,10 +18,11 @@ def scan(
 def build(
     target_dir: str = typer.Argument(..., help="Directory to create symlinked structure"),
     mode: str = typer.Option("title", help="Folder structure: 'title' or 'year'"),
-    dry_run: bool = typer.Option(False, help="Preview changes without making them")
+    dry_run: bool = typer.Option(False, help="Preview changes without making them"),
+    script: str = typer.Option(None, help="Path to bash script to write ln -s commands instead of executing them")
 ):
-    """Build symlinked movie structure from database."""
-    build_structure(target_dir, mode=mode, dry_run=dry_run)
+    """Build symlinked movie structure from database or generate a bash script."""
+    build_structure(target_dir, mode=mode, dry_run=dry_run, script_path=script)
 
 @app.command()
 def reset():
