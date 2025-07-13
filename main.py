@@ -3,6 +3,7 @@ from db import init_db, reset_db
 from scan import scan_directory
 from build import build_structure
 from dedup import dedup
+from review import review_database
 
 app = typer.Typer(help="Movie Organiser CLI")
 
@@ -36,6 +37,11 @@ def reset():
 def dedup_files():
     """Interactively deduplicate files with the same TMDb ID."""
     dedup()
+
+@app.command()
+def review():
+    """Review and edit movie database entries."""
+    review_database()
 
 if __name__ == "__main__":
     app()

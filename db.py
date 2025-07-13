@@ -65,3 +65,16 @@ def set_skip_flag(absolute_path: str, skip: bool):
     c.execute('UPDATE movies SET skip = ? WHERE absolute_path = ?', (1 if skip else 0, absolute_path))
     conn.commit()
     conn.close()
+
+def update_movie(absolute_path: str, **kwargs):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    fields = []
+    values = []
+    for k, v in kwargs.items():
+        fields.append(f"{k}=?")
+        values.append(v)
+    values.append(absolute_path)
+    c.execute(f"UPDATE movies SET {', '.join(fields)} WHERE absolute_path=?", values)
+    conn.commit()
+    conn.close()

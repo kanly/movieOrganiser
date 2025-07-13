@@ -43,6 +43,55 @@ def tmdb_v4_search_by_id(tmdb_id: str, bearer_token: str):
         console.print(f"[red]TMDb API error: {response.status_code} {response.text}[/red]")
         return None
 
+def tmdb_search_and_select(filename):
+    """
+    Interactive TMDb search and selection for review/edit.
+    Returns (tmdb_id, title, year, genres, metadata) or (None, None, None, None, None) if cancelled.
+    """
+    from rich.console import Console
+    from rich.prompt import Prompt
+    import requests
+    import json
+    console = Console()
+    bearer_token = Prompt.ask("Enter TMDb Bearer Token", password=True)
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "accept": "application/json"
+    }
+    cleaned_title = filename
+    while True:
+        query = Prompt.ask(f"Search TMDb for", default=cleaned_title)
+        url = f"https://api.themoviedb.org/3/search/movie?query={query}&include_adult=false&language=en-US&page=1"
+        resp = requests.get(url, headers=headers)
+        if resp.status_code != 200:
+            console.print(f"[red]TMDb API error: {resp.status_code}[/red]")
+            return None, None, None, None, None
+        results = resp.json().get("results", [])
+        if not results:
+            console.print("[yellow]No results found. Try another search term or leave blank to cancel.[/yellow]")
+            cleaned_title = Prompt.ask("New search term (blank to cancel)", default="")
+            if not cleaned_title:
+                return None, None, None, None, None
+            continue
+        for idx, m in enumerate(results[:5]):
+            title = m.get("title", "")
+            year = m.get("release_date", "")[:4]
+            console.print(f"{idx+1}. {title} ({year}) [ID: {m.get('id')}]")
+        choice = Prompt.ask("Select match (1-5), or 0 to search again", default="1")
+        if choice.isdigit() and 1 <= int(choice) <= min(5, len(results)):
+            movie = results[int(choice)-1]
+            tmdb_id = movie.get("id")
+            title = movie.get("title")
+            year = int(movie.get("release_date", "0")[:4] or 0)
+            genres = ""  # Could fetch details for genres if needed
+            metadata = json.dumps(movie, default=str)
+            return tmdb_id, title, year, genres, metadata
+        elif choice == "0":
+            cleaned_title = Prompt.ask("New search term", default=cleaned_title)
+            continue
+        else:
+            return None, None, None, None, None
+
 def guess_title_year(filename: str) -> Tuple[str, Optional[int]]:
     # Remove bracketed/parenthetical info and common tags
     name = os.path.splitext(filename)[0]
