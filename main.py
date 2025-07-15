@@ -22,10 +22,11 @@ def build(
     mode: str = typer.Option("title", help="Folder structure: 'title' or 'year'"),
     dry_run: bool = typer.Option(False, help="Preview changes without making them"),
     script: str = typer.Option(None, help="Path to bash script to write ln -s commands instead of executing them"),
-    source_root: str = typer.Option(None, help="Source root to prepend to relative paths in script mode (for remote/mounted filesystems)")
+    source_root: str = typer.Option(None, help="Source root to prepend to relative paths in script mode (for remote/mounted filesystems)"),
+    effective_source_root: str = typer.Option(None, help="Effective source root for script (for remote/mounted filesystems)")
 ):
     """Build symlinked movie structure from database or generate a bash script."""
-    build_structure(target_dir, mode=mode, dry_run=dry_run, script_path=script, source_root=source_root)
+    build_structure(target_dir, mode=mode, dry_run=dry_run, script_path=script, source_root=source_root, effective_source_root=effective_source_root)
 
 @app.command()
 def reset():
